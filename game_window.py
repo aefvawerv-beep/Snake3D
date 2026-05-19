@@ -4,7 +4,8 @@ import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 
-from scenes import MainMenuScene
+# Bezpieczny import całej zawartości
+from scenes import *
 
 
 class GameWindow:
@@ -38,7 +39,8 @@ class GameWindow:
             "MOVE_WEST": pygame.K_a,
             "MOVE_EAST": pygame.K_d,
             "MOVE_UP": pygame.K_q,
-            "MOVE_DOWN": pygame.K_e
+            "MOVE_DOWN": pygame.K_e,
+            "MOUSE_SENSITIVITY": 0.30  # Nowa domyślna wartość czułości
         }
         
         if os.path.exists(self.config_path):

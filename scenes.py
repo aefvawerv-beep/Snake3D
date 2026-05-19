@@ -22,7 +22,6 @@ class Scene:
 class MainMenuScene(Scene):
     def __init__(self, game):
         self.game = game
-        # Hitboxy przycisków
         self.play_button = pygame.Rect(300, 200, 200, 55)
         self.settings_button = pygame.Rect(300, 280, 200, 55)
         self.font = pygame.font.SysFont("Arial", 24, bold=True)
@@ -42,39 +41,28 @@ class MainMenuScene(Scene):
         pass
 
     def render(self):
-        # Czyszczenie bufora OpenGL
         glClearColor(0.93, 0.93, 0.93, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        # Zabezpieczenie macierzy OpenGL przed rysowaniem 2D
         glPushAttrib(GL_ALL_ATTRIB_BITS)
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
         glMatrixMode(GL_MODELVIEW)
         glPushMatrix()
 
-        # Tworzymy czysty ekran 2D w Pygame
         surface = pygame.Surface((self.game.width, self.game.height), pygame.SRCALPHA)
-        surface.fill((238, 238, 238)) # Jasnoszare tło (#EEEEEE)
-        
-        pygame.draw.rect(Surface, (0,255,255),20)
+        surface.fill((238, 238, 238)) # Jasnoszare tło #EEEEEE
 
-        # Rysowanie przycisku PLAY (Morski turkus #008080)
         pygame.draw.rect(surface, (0, 128, 128), self.play_button, border_radius=4)
-        # Rysowanie przycisku USTAWIENIA (Koralowy pomarańcz #FF7F50)
         pygame.draw.rect(surface, (255, 127, 80), self.settings_button, border_radius=4)
 
-        # Renderowanie białych napisów
         play_text = self.font.render("PLAY", True, (255, 255, 255))
         settings_text = self.font.render("USTAWIENIA", True, (255, 255, 255))
 
-        # Centrowanie napisów na przyciskach
         surface.blit(play_text, (self.play_button.x + (self.play_button.width - play_text.get_width()) // 2, self.play_button.y + 14))
         surface.blit(settings_text, (self.settings_button.x + (self.settings_button.width - settings_text.get_width()) // 2, self.settings_button.y + 14))
 
-        # Konwersja całej płaszczyzny 2D na teksturę OpenGL
         text_data = pygame.image.tostring(surface, "RGBA", True)
-        
         glEnable(GL_TEXTURE_2D)
         tex_id = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, tex_id)
@@ -82,7 +70,6 @@ class MainMenuScene(Scene):
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self.game.width, self.game.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
 
-        # Rzucenie płaskiego obrazu interfejsu na pełny ekran monitora
         glColor4f(1.0, 1.0, 1.0, 1.0)
         glBegin(GL_QUADS)
         glTexCoord2f(0.0, 0.0); glVertex2f(-1.0, -1.0)
@@ -94,7 +81,6 @@ class MainMenuScene(Scene):
         glDeleteTextures([tex_id])
         glDisable(GL_TEXTURE_2D)
 
-        # Przywrócenie ustawień matrixa do stanu początkowego dla grafiki 3D
         glMatrixMode(GL_MODELVIEW)
         glPopMatrix()
         glMatrixMode(GL_PROJECTION)
@@ -103,7 +89,7 @@ class MainMenuScene(Scene):
 
 
 # =========================
-# USTAWIEŃ STEROWANIA (PANCERNE RENDEROWANIE 2D)
+# OKNO USTAWIEŃ Z MODYFIKACJĄ CZUŁOŚCI
 # =========================
 class SettingsScene(Scene):
     def __init__(self, game):
@@ -121,15 +107,78 @@ class SettingsScene(Scene):
         ]
         
         self.button_rects = {}
-        start_y = 130
+        start_y = 120
         for action_key, _ in self.actions:
-            self.button_rects[action_key] = pygame.Rect(450, start_y, 200, 38)
-            start_y += 50
+            self.button_rects[action_key] = pygame.Rect(450, start_y, 200, 35)
+            start_y += 45
             
-        self.back_button = pygame.Rect(200, 470, 400, 50)
+        self.sens_rect = pygame.Rect(450, start_y + 10, 200, 35)
+        self.back_button = pygame.Rect(200, 490, 400, 45)
         self.active_action = None
+        
+        # Zmienna przechowująca tekst wpisywany z klawiatury
+        self.temp_sens_str = ""
 
     def handle_event(self, event):
+        # 1. Obsługa wpisywania tekstu dla czułości myszy
+        if self.active_action == "MOUSE_SENSITIVITY":
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                    # Próba zamiany wpisanego tekstu na ułamek (float)
+                    try:
+                        val = float(self.temp_sens_str)
+                        # Zabezpieczenie, by czułość nie była ujemna ani za duża
+                        val = max(0.01, min(5.0, val))
+                        self.game.config["MOUSE_SENSITIVITY"] = round(val, 3)
+                    except ValueError:
+                        pass # Jeśli wpisano głupoty (np. samą kropkę), ignorujemy
+                    
+                    self.game.save_config()
+                    self.active_action = None
+                
+                elif event.key == pygame.K_BACKSPACE:
+                    self.temp_sens_str = self.temp_sens_str[:-1]
+                
+                else:
+                    # Akceptuj tylko cyfry i maksymalnie jedną kropkę (z limitem do 5 znaków)
+                    char = event.unicode
+                    if char.isdigit() or (char == '.' and '.' not in self.temp_sens_str):
+                        if len(self.temp_sens_str) < 5:
+                            self.temp_sens_str += char
+            return
+
+        # 2. Standardowa obsługa przypisywania klawiszy (W, S, A, D itd.)
+        if self.active_action is not None:
+            if event.type == pygame.KEYDOWN:
+                if event.key != pygame.K_ESCAPE:
+                    self.game.config[self.active_action] = event.key
+                    self.game.save_config()
+                self.active_action = None
+            return
+
+        # 3. Obsługa kliknięć myszką w menu
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.back_button.collidepoint(event.pos):
+                self.game.change_scene(MainMenuScene(self.game))
+                return
+            
+            for action_key, rect in self.button_rects.items():
+                if rect.collidepoint(event.pos):
+                    self.active_action = action_key
+                    return
+            
+            # Kliknięto w pole wpisywania czułości
+            if self.sens_rect.collidepoint(event.pos):
+                self.active_action = "MOUSE_SENSITIVITY"
+                # Wczytanie obecnej wartości do edycji jako tekst
+                self.temp_sens_str = str(self.game.config.get("MOUSE_SENSITIVITY", 0.3))
+                return
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.game.change_scene(MainMenuScene(self.game))
+
+        # Standardowa obsługa przypisywania klawisza
         if self.active_action is not None:
             if event.type == pygame.KEYDOWN:
                 if event.key != pygame.K_ESCAPE:
@@ -143,10 +192,16 @@ class SettingsScene(Scene):
                 self.game.change_scene(MainMenuScene(self.game))
                 return
             
+            # Czy kliknięto w bindowanie klawisza
             for action_key, rect in self.button_rects.items():
                 if rect.collidepoint(event.pos):
                     self.active_action = action_key
-                    break
+                    return
+            
+            # Czy kliknięto w regulację czułości
+            if self.sens_rect.collidepoint(event.pos):
+                self.active_action = "MOUSE_SENSITIVITY"
+                return
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -166,40 +221,48 @@ class SettingsScene(Scene):
         glPushMatrix()
 
         surface = pygame.Surface((self.game.width, self.game.height), pygame.SRCALPHA)
-        surface.fill((238, 238, 238)) # Tło #EEEEEE
+        surface.fill((238, 238, 238))
 
-        # Nagłówek okna (Ciemny turkus)
-        title_text = self.title_font.render("USTAWIENIA KLAWISZY", True, (0, 90, 90))
-        surface.blit(title_text, ((self.game.width - title_text.get_width()) // 2, 45))
+        title_text = self.title_font.render("USTAWIENIA GRY", True, (0, 90, 90))
+        surface.blit(title_text, ((self.game.width - title_text.get_width()) // 2, 35))
 
-        # Renderowanie wierszy bindowania klawiszy
+        # 1. Rysowanie wierszy klawiszy
         for action_key, label in self.actions:
             rect = self.button_rects[action_key]
-            
             if self.active_action == action_key:
-                # Kolor aktywny podczas przypisywania klawisza (Jasny morski)
                 pygame.draw.rect(surface, (0, 160, 160), rect, border_radius=4)
-                key_text_str = "Naciśnij klawisz..."
+                key_text_str = "Wciśnij klawisz..."
             else:
-                # Standardowy przycisk (Morski turkus #008080)
                 pygame.draw.rect(surface, (0, 128, 128), rect, border_radius=4)
                 current_key_code = self.game.config.get(action_key, 0)
                 key_text_str = pygame.key.name(current_key_code).upper()
 
-            # Opisy po lewej (ciemnoszare)
             lbl_surf = self.font.render(label, True, (40, 40, 40))
-            surface.blit(lbl_surf, (180, rect.y + 8))
+            surface.blit(lbl_surf, (180, rect.y + 6))
 
-            # Litera klawisza na przycisku (Biała)
             key_surf = self.font.render(key_text_str, True, (255, 255, 255))
-            surface.blit(key_surf, (rect.x + (rect.width - key_surf.get_width()) // 2, rect.y + 8))
+            surface.blit(key_surf, (rect.x + (rect.width - key_surf.get_width()) // 2, rect.y + 6))
 
-        # Przycisk POWRÓT (Koralowy pomarańcz #FF7F50)
+        # 2. Rysowanie wiersza czułości myszy
+        if self.active_action == "MOUSE_SENSITIVITY":
+            pygame.draw.rect(surface, (0, 160, 160), self.sens_rect, border_radius=4)
+            # Dodajemy znak zachęty "_" symulujący kursor
+            sens_text_str = self.temp_sens_str + "_" 
+        else:
+            pygame.draw.rect(surface, (0, 128, 128), self.sens_rect, border_radius=4)
+            sens_text_str = str(self.game.config.get('MOUSE_SENSITIVITY', 0.3))
+
+        lbl_sens = self.font.render("Czułość myszy (wpisz):", True, (40, 40, 40))
+        surface.blit(lbl_sens, (180, self.sens_rect.y + 6))
+
+        sens_surf = self.font.render(sens_text_str, True, (255, 255, 255))
+        surface.blit(sens_surf, (self.sens_rect.x + (self.sens_rect.width - sens_surf.get_width()) // 2, self.sens_rect.y + 6))
+
+        # 3. Przycisk POWRÓT
         pygame.draw.rect(surface, (255, 127, 80), self.back_button, border_radius=4)
         back_text = self.font.render("POWRÓT", True, (255, 255, 255))
-        surface.blit(back_text, (self.back_button.x + (self.back_button.width - back_text.get_width()) // 2, self.back_button.y + 13))
+        surface.blit(back_text, (self.back_button.x + (self.back_button.width - back_text.get_width()) // 2, self.back_button.y + 11))
 
-        # Wrzucenie gotowego interfejsu na kartę graficzną
         text_data = pygame.image.tostring(surface, "RGBA", True)
         glEnable(GL_TEXTURE_2D)
         tex_id = glGenTextures(1)
@@ -238,7 +301,6 @@ class GameScene(Scene):
 
         self.yaw = 45.0
         self.pitch = 30.0
-        self.mouse_sensitivity = 0.3
 
         self.snake = Snake()
         self.test_food = Food(Position3D(10, 5, 5))
@@ -260,8 +322,10 @@ class GameScene(Scene):
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
             dx, dy = event.rel
-            self.yaw += dx * self.mouse_sensitivity
-            self.pitch += dy * self.mouse_sensitivity
+            # Pobieranie aktualnej czułości bezpośrednio ze słownika config okna gry
+            sensitivity = self.game.config.get("MOUSE_SENSITIVITY", 0.3)
+            self.yaw += dx * sensitivity
+            self.pitch += dy * sensitivity
             self.pitch = max(-89, min(89, self.pitch))
 
         if event.type == pygame.KEYDOWN:
