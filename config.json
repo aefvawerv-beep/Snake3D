@@ -1,7 +1,7 @@
 {
     "MOVE_NORTH": 119,
-    "MOVE_SOUTH": 97,
-    "MOVE_WEST": 115,
+    "MOVE_SOUTH": 115,
+    "MOVE_WEST": 97,
     "MOVE_EAST": 100,
     "MOVE_UP": 113,
     "MOVE_DOWN": 101,
