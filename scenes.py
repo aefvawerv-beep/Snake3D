@@ -9,92 +9,34 @@ from OpenGL.GLU import *
 
 from entities import Snake, Food, Obstacle, SnakeSegment, Position3D, Direction, RenderDispatcher
 
-# =========================
-# SYSTEM ŁADOWANIA POZIOMÓW (Z PLIKÓW JSON)
-# =========================
-def ensure_default_levels():
-    """Sprawdza czy folder 'levels' istnieje i tworzy domyślne poziomy.
-    Jeśli pliki istnieją, ale są stare (nie mają pola 'id'), zostaną automatycznie naprawione.
-    """
-    levels_dir = "levels"
-    
-    if not os.path.exists(levels_dir):
-        os.makedirs(levels_dir)
-        
-    # --- POZIOM 1 ---
-    level1_path = os.path.join(levels_dir, "level1.json")
-    recreate_1 = True
-    if os.path.exists(level1_path):
-        try:
-            with open(level1_path, "r", encoding="utf-8") as f:
-                # Jeśli plik istnieje i MA już klucz "id", to wszystko jest w porządku
-                if "id" in json.load(f):
-                    recreate_1 = False
-        except:
-            pass  # Jeśli plik jest uszkodzony, to też go utworzymy na nowo
+from progress_manager import get_max_unlocked_level, save_progress, reset_progress
 
-    if recreate_1:
-        level1_data = {
-            "id": 1,
-            "name": "Poziom 1: Rozgrzewka",
-            "grid_size": 10,
-            "foods_to_win": 3,
-            "snake_start": [
-                {"x": 5, "y": 5, "z": 5},  # Głowa (środek mapy)
-                {"x": 5, "y": 5, "z": 6},  # Segment 1
-                {"x": 5, "y": 5, "z": 7}   # Segment 2
-            ],
-            "food_start": {"x": 5, "y": 5, "z": 2},
-            "obstacles": []
-        }
-        with open(level1_path, "w", encoding="utf-8") as f:
-            json.dump(level1_data, f, indent=4, ensure_ascii=False)
-        print("Zaktualizowano plik: level1.json")
-
-    # --- POZIOM 2 ---
-    level2_path = os.path.join(levels_dir, "level2.json")
-    recreate_2 = True
-    if os.path.exists(level2_path):
-        try:
-            with open(level2_path, "r", encoding="utf-8") as f:
-                if "id" in json.load(f):
-                    recreate_2 = False
-        except:
-            pass
-
-    if recreate_2:
-        level2_data = {
-            "id": 2,
-            "name": "Poziom 2: Pierwsze Przeszkody",
-            "grid_size": 12,
-            "foods_to_win": 4,
-            "snake_start": [
-                {"x": 6, "y": 6, "z": 6},  # Głowa
-                {"x": 6, "y": 6, "z": 7},  # Segment 1
-                {"x": 6, "y": 6, "z": 8}   # Segment 2
-            ],
-            "food_start": {"x": 6, "y": 6, "z": 3},
-            "obstacles": [
-                {"x": 3, "y": 6, "z": 6},
-                {"x": 4, "y": 6, "z": 6},
-                {"x": 8, "y": 6, "z": 6},
-                {"x": 9, "y": 6, "z": 6}
-            ]
-        }
-        with open(level2_path, "w", encoding="utf-8") as f:
-            json.dump(level2_data, f, indent=4, ensure_ascii=False)
-        print("Zaktualizowano plik: level2.json")
-
-ensure_default_levels()
 
 def load_all_levels():
     levels = []
-    for file in glob.glob("levels/*.json"):
+    required_keys = ["id", "name", "grid_size", "foods_to_win", "snake_start", "food_start", "obstacles"]
+    
+    files = glob.glob("levels/*.json")
+    if not files:
+        print("[WARNING] Folder 'levels' jest pusty lub nie istnieje! Gra nie znajdzie żadnych poziomów.")
+
+    for file in files:
         try:
             with open(file, "r", encoding="utf-8") as f:
-                levels.append(json.load(f))
+                data = json.load(f)
+                
+                missing_keys = [key for key in required_keys if key not in data]
+                if missing_keys:
+                    print(f"[CORRUPTED FILE] Pominięto {file} -> Brakuje wymaganych pól: {missing_keys}")
+                    continue  
+                
+                levels.append(data)
+                
+        except json.JSONDecodeError:
+            print(f"[CORRUPTED JSON] Pominięto {file} -> Uszkodzona składnia znaków (sprawdź nawiasy/przecinki).")
         except Exception as e:
             print(f"Błąd ładowania {file}: {e}")
+            
     levels.sort(key=lambda x: x.get("id", 0))
     return levels
 
@@ -121,20 +63,33 @@ class Scene:
 class MainMenuScene(Scene):
     def __init__(self, game):
         self.game = game
-        self.play_button = pygame.Rect(300, 200, 200, 55)
-        self.settings_button = pygame.Rect(300, 280, 200, 55)
         self.font = pygame.font.SysFont("Arial", 24, bold=True)
+        self.title_font = pygame.font.SysFont("Arial", 40, bold=True)
+        self.small_font = pygame.font.SysFont("Arial", 16, bold=True)
+        
+        # Przywrócone poprawne przyciski menu głównego
+        self.play_button = pygame.Rect((self.game.width - 300) // 2, 180, 300, 50)
+        self.settings_button = pygame.Rect((self.game.width - 300) // 2, 250, 300, 50)
+        self.exit_button = pygame.Rect((self.game.width - 300) // 2, 320, 300, 50)
+        self.reset_button = pygame.Rect((self.game.width - 200) // 2, 450, 200, 35)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.play_button.collidepoint(event.pos):
                 self.game.change_scene(LevelSelectorScene(self.game))
-            elif self.settings_button.collidepoint(event.pos):
+                return
+            if self.settings_button.collidepoint(event.pos):
                 self.game.change_scene(SettingsScene(self.game))
-                
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RETURN:
-                self.game.change_scene(LevelSelectorScene(self.game))
+                return
+            if self.exit_button.collidepoint(event.pos):
+                pygame.quit()
+                import sys; sys.exit()
+                return
+            if self.reset_button.collidepoint(event.pos):
+                reset_progress()
+                # Odświeżamy scenę menu głównego, aby zaktualizować stan
+                self.game.change_scene(MainMenuScene(self.game))
+                return
 
     def update(self): pass
 
@@ -147,18 +102,33 @@ class MainMenuScene(Scene):
         glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity()
         glDisable(GL_DEPTH_TEST)
 
+        # Tworzenie interfejsu na jednej czystej powierzchni
         surface = pygame.Surface((self.game.width, self.game.height), pygame.SRCALPHA)
         surface.fill((238, 238, 238))
 
+        # Tytuł
+        t_text = self.title_font.render("3D SNAKE GAME", True, (0, 90, 90))
+        surface.blit(t_text, ((self.game.width - t_text.get_width()) // 2, 60))
+
+        # Przyciski główne
         pygame.draw.rect(surface, (0, 128, 128), self.play_button, border_radius=4)
-        pygame.draw.rect(surface, (255, 127, 80), self.settings_button, border_radius=4)
-
         play_text = self.font.render("PLAY", True, (255, 255, 255))
+        surface.blit(play_text, (self.play_button.x + (self.play_button.width - play_text.get_width()) // 2, self.play_button.y + 11))
+
+        pygame.draw.rect(surface, (0, 128, 128), self.settings_button, border_radius=4)
         settings_text = self.font.render("SETTINGS", True, (255, 255, 255))
+        surface.blit(settings_text, (self.settings_button.x + (self.settings_button.width - settings_text.get_width()) // 2, self.settings_button.y + 11))
 
-        surface.blit(play_text, (self.play_button.x + (self.play_button.width - play_text.get_width()) // 2, self.play_button.y + 14))
-        surface.blit(settings_text, (self.settings_button.x + (self.settings_button.width - settings_text.get_width()) // 2, self.settings_button.y + 14))
+        pygame.draw.rect(surface, (120, 120, 120), self.exit_button, border_radius=4)
+        exit_text = self.font.render("EXIT", True, (255, 255, 255))
+        surface.blit(exit_text, (self.exit_button.x + (self.exit_button.width - exit_text.get_width()) // 2, self.exit_button.y + 11))
 
+        # Przycisk Reset
+        pygame.draw.rect(surface, (215, 90, 90), self.reset_button, border_radius=4)
+        r_text = self.small_font.render("RESET PROGRESS", True, (255, 255, 255))
+        surface.blit(r_text, (self.reset_button.x + (self.reset_button.width - r_text.get_width()) // 2, self.reset_button.y + 8))
+
+        # Konwersja i mapowanie na teksturę OpenGL
         text_data = pygame.image.tostring(surface, "RGBA", True)
         glEnable(GL_TEXTURE_2D); tex_id = glGenTextures(1); glBindTexture(GL_TEXTURE_2D, tex_id)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
@@ -166,7 +136,13 @@ class MainMenuScene(Scene):
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self.game.width, self.game.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
 
         glColor4f(1.0, 1.0, 1.0, 1.0)
-        glBegin(GL_QUADS); glTexCoord2f(0.0, 0.0); glVertex2f(-1.0, -1.0); glTexCoord2f(1.0, 0.0); glVertex2f(1.0, -1.0); glTexCoord2f(1.0, 1.0); glVertex2f(1.0, 1.0); glTexCoord2f(0.0, 1.0); glVertex2f(-1.0, 1.0); glEnd()
+        glBegin(GL_QUADS)
+        glTexCoord2f(0.0, 0.0); glVertex2f(-1.0, -1.0)
+        glTexCoord2f(1.0, 0.0); glVertex2f(1.0, -1.0)
+        glTexCoord2f(1.0, 1.0); glVertex2f(1.0, 1.0)
+        glTexCoord2f(0.0, 1.0); glVertex2f(-1.0, 1.0)
+        glEnd()
+        
         glDeleteTextures([tex_id]); glDisable(GL_TEXTURE_2D)
         glMatrixMode(GL_MODELVIEW); glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glPopAttrib()
 
@@ -177,18 +153,32 @@ class MainMenuScene(Scene):
 class LevelSelectorScene(Scene):
     def __init__(self, game):
         self.game = game
-        self.font = pygame.font.SysFont("Arial", 22, bold=True)
+        self.font = pygame.font.SysFont("Arial", 20, bold=True)
         self.title_font = pygame.font.SysFont("Arial", 32, bold=True)
         
         self.levels_data = load_all_levels()
-        
         self.level_rects = {}
-        start_y = 130
-        for lvl in self.levels_data:
-            self.level_rects[lvl["id"]] = pygame.Rect(200, start_y, 400, 50)
-            start_y += 65
+        
+        self.max_unlocked = get_max_unlocked_level()
+        
+        button_w = 260
+        button_h = 45
+        gap_x = 40  
+        gap_y = 15  
+        start_y = 120
+        
+        total_grid_width = (button_w * 2) + gap_x
+        start_x = (self.game.width - total_grid_width) // 2
+        
+        for i, lvl in enumerate(self.levels_data):
+            col = i % 2      
+            row = i // 2      
+            x = start_x + col * (button_w + gap_x)
+            y = start_y + row * (button_h + gap_y)
             
-        self.back_button = pygame.Rect(200, 480, 400, 45)
+            self.level_rects[lvl["id"]] = pygame.Rect(x, y, button_w, button_h)
+            
+        self.back_button = pygame.Rect((self.game.width - 300) // 2, 440, 300, 45)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -197,8 +187,12 @@ class LevelSelectorScene(Scene):
                 return
             
             for lvl in self.levels_data:
-                if self.level_rects[lvl["id"]].collidepoint(event.pos):
-                    self.game.change_scene(GameScene(self.game, lvl))
+                lvl_id = lvl["id"]
+                if self.level_rects[lvl_id].collidepoint(event.pos):
+                    if lvl_id <= self.max_unlocked:
+                        self.game.change_scene(GameScene(self.game, lvl))
+                    else:
+                        print(f"[INFO] Poziom {lvl_id} jest zablokowany! Ukończ poprzednie etapy.")
                     return
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -222,14 +216,30 @@ class LevelSelectorScene(Scene):
         surface.blit(title_text, ((self.game.width - title_text.get_width()) // 2, 45))
 
         for lvl in self.levels_data:
-            rect = self.level_rects[lvl["id"]]
-            pygame.draw.rect(surface, (0, 128, 128), rect, border_radius=4)
-            lvl_text = self.font.render(lvl["name"], True, (255, 255, 255))
-            surface.blit(lvl_text, (rect.x + (rect.width - lvl_text.get_width()) // 2, rect.y + 12))
+            lvl_id = lvl["id"]
+            rect = self.level_rects[lvl_id]
+            
+            if lvl_id <= self.max_unlocked:
+                color = (0, 128, 128)        
+                text_color = (255, 255, 255)
+                display_name = lvl["name"]
+            else:
+                color = (180, 180, 180)      
+                text_color = (120, 120, 120)
+                display_name = f"{lvl['name']} [LOCKED]"
+                
+            pygame.draw.rect(surface, color, rect, border_radius=4)
+            
+            lvl_text = self.font.render(display_name, True, text_color)
+            text_x = rect.x + (rect.width - lvl_text.get_width()) // 2
+            text_y = rect.y + (rect.height - lvl_text.get_height()) // 2
+            surface.blit(lvl_text, (text_x, text_y))
 
         pygame.draw.rect(surface, (255, 127, 80), self.back_button, border_radius=4)
         back_text = self.font.render("BACK", True, (255, 255, 255))
-        surface.blit(back_text, (self.back_button.x + (self.back_button.width - back_text.get_width()) // 2, self.back_button.y + 11))
+        back_x = self.back_button.x + (self.back_button.width - back_text.get_width()) // 2
+        back_y = self.back_button.y + (self.back_button.height - back_text.get_height()) // 2
+        surface.blit(back_text, (back_x, back_y))
 
         text_data = pygame.image.tostring(surface, "RGBA", True)
         glEnable(GL_TEXTURE_2D); tex_id = glGenTextures(1); glBindTexture(GL_TEXTURE_2D, tex_id)
@@ -239,6 +249,8 @@ class LevelSelectorScene(Scene):
 
         glColor4f(1.0, 1.0, 1.0, 1.0)
         glBegin(GL_QUADS); glTexCoord2f(0.0, 0.0); glVertex2f(-1.0, -1.0); glTexCoord2f(1.0, 0.0); glVertex2f(1.0, -1.0); glTexCoord2f(1.0, 1.0); glVertex2f(1.0, 1.0); glTexCoord2f(0.0, 1.0); glVertex2f(-1.0, 1.0); glEnd()
+        
+        # DODANO: Poprawne czyszczenie stosu macierzy OpenGL dla uniknięcia freeze
         glDeleteTextures([tex_id]); glDisable(GL_TEXTURE_2D)
         glMatrixMode(GL_MODELVIEW); glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glPopAttrib()
 
@@ -253,8 +265,8 @@ class GameOverScene(Scene):
         self.title_font = pygame.font.SysFont("Arial", 40, bold=True)
         self.font = pygame.font.SysFont("Arial", 24, bold=True)
         
-        self.retry_button = pygame.Rect(300, 250, 200, 55)
-        self.menu_button = pygame.Rect(300, 330, 200, 55)
+        self.retry_button = pygame.Rect((self.game.width - 200) // 2, 250, 200, 55)
+        self.menu_button = pygame.Rect((self.game.width - 200) // 2, 330, 200, 55)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -313,8 +325,8 @@ class LevelWinScene(Scene):
         
         self.next_lvl_data = get_next_level(self.level_data["id"])
         
-        self.next_button = pygame.Rect(300, 250, 200, 55) if self.next_lvl_data else None
-        self.menu_button = pygame.Rect(300, 330, 200, 55)
+        self.next_button = pygame.Rect((self.game.width - 200) // 2, 250, 200, 55) if self.next_lvl_data else None
+        self.menu_button = pygame.Rect((self.game.width - 200) // 2, 330, 200, 55)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -518,7 +530,6 @@ class GameScene(Scene):
 
         self.snake = Snake()
         
-        # Zabezpieczenie przed pustym wezem w JSONie
         snake_data = level_data.get("snake_start", [])
         if snake_data:
             self.snake.segments = [
@@ -540,13 +551,18 @@ class GameScene(Scene):
         self.move_interval = 300
         self.last_move_time = pygame.time.get_ticks()
         
-        
     def game_over(self):
         self.game.change_scene(GameOverScene(self.game, self.level_data))
 
     def on_food_eaten(self):
         self.foods_eaten += 1
         if self.foods_eaten >= self.foods_to_win:
+            current_level_id = self.level_data["id"]
+            current_max = get_max_unlocked_level()
+
+            if current_level_id == current_max:
+                save_progress(current_max + 1)
+                print(f"[PROGRESS] Odblokowano poziom {current_level_id + 1}!")
             self.game.change_scene(LevelWinScene(self.game, self.level_data))
         else:
             self.food.randomize_position(self)
