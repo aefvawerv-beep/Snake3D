@@ -583,7 +583,8 @@ class GameScene(Scene):
             sensitivity = self.game.config.get("MOUSE_SENSITIVITY", 0.3)
             self.yaw += dx * sensitivity
             self.pitch += dy * sensitivity
-            self.pitch = max(-89, min(89, self.pitch))
+            
+            #self.pitch = max(-91, min(91, self.pitch))
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
