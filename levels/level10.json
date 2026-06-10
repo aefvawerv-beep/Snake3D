@@ -2,7 +2,7 @@
     "id": 10,
     "name": "LEVEL 10",
     "grid_size": 14,
-    "foods_to_win": 8,
+    "foods_to_win": 5,
     "snake_start": [
         {
             "x": 7,
