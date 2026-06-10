@@ -1,0 +1,29 @@
+{
+    "id": 1,
+    "name": "LEVEL 1",
+    "grid_size": 10,
+    "foods_to_win": 3,
+    "snake_start": [
+        {
+            "x": 5,
+            "y": 5,
+            "z": 5
+        },
+        {
+            "x": 5,
+            "y": 5,
+            "z": 6
+        },
+        {
+            "x": 5,
+            "y": 5,
+            "z": 7
+        }
+    ],
+    "food_start": {
+        "x": 5,
+        "y": 5,
+        "z": 2
+    },
+    "obstacles": []
+}
